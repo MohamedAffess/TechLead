@@ -1,0 +1,524 @@
+<title>TechLead</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky header with solution filter + tabs; content is a wrapped grid of solution sheets, a 4-lane task board, an ADR log, and a team roster. */
+:root {
+  --bg: #eef1f4; --surface: #ffffff; --ink: #16202a; --muted: #5b6876; --line: #d6dde4;
+  --accent: #1d5c8f; --accent-soft: #e1ebf4; --accent-ink: #ffffff;
+  --ok: #2f7d4f; --ok-soft: #e1f1e7; --warn: #a8690f; --warn-soft: #fbefd9; --bad: #b8352a; --bad-soft: #f8e1de;
+  --idle: #6b7785; --idle-soft: #e7ebef;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e141a; --surface: #161f28; --ink: #e5ebf1; --muted: #92a0ae; --line: #283441;
+  --accent: #6aa6dc; --accent-soft: #1a2c3d; --accent-ink: #0b1620;
+  --ok: #5cc58a; --ok-soft: #15301f; --warn: #e3b04b; --warn-soft: #33270f; --bad: #ee6c5f; --bad-soft: #3a1a17;
+  --idle: #94a1ae; --idle-soft: #222c36; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e141a; --surface: #161f28; --ink: #e5ebf1; --muted: #92a0ae; --line: #283441;
+  --accent: #6aa6dc; --accent-soft: #1a2c3d; --accent-ink: #0b1620;
+  --ok: #5cc58a; --ok-soft: #15301f; --warn: #e3b04b; --warn-soft: #33270f; --bad: #ee6c5f; --bad-soft: #3a1a17;
+  --idle: #94a1ae; --idle-soft: #222c36; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body); }
+button, input, select, textarea { font: inherit; color: inherit }
+button { cursor: pointer }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1240px; margin: 0 auto; padding: 12px 16px 0; display: flex; flex-direction: column; gap: 10px }
+.row1 { display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
+.brand { font: 700 22px/1 var(--f-display); letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 8px }
+.brand small { font: 500 11px var(--f-mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase }
+.spacer { flex: 1 }
+.field-inline { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px }
+select, input[type=text], input[type=date], textarea { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 9px; min-width: 0 }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 7px 12px; font-weight: 500 }
+.btn:hover { border-color: var(--accent) }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.btn.danger { color: var(--bad); border-color: var(--bad) }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px }
+.btn.ghost:hover { color: var(--accent) }
+nav.tabs { display: flex; gap: 2px; overflow-x: auto }
+nav.tabs button { border: 0; background: none; padding: 9px 12px 10px; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap }
+nav.tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent) }
+nav.tabs .n { font: 11px var(--f-mono); color: var(--muted); margin-left: 4px }
+
+main { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px }
+h2 { font: 600 18px/1.2 var(--f-display); margin: 0; text-wrap: balance }
+h3 { font: 600 16px/1.25 var(--f-display); margin: 0; text-wrap: balance }
+.eyebrow { font: 500 11px var(--f-mono); color: var(--muted); letter-spacing: .07em; text-transform: uppercase }
+.muted { color: var(--muted) }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 12px; flex-wrap: wrap }
+.stack { display: flex; flex-direction: column; gap: 24px }
+
+.notice { border: 1px dashed var(--line); background: var(--surface); border-radius: var(--r); padding: 10px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px }
+.notice.warn { border-color: var(--warn); background: var(--warn-soft) }
+
+/* attention strip */
+.attn { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px }
+.attn-cell { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+.attn-cell .big { font: 600 26px/1 var(--f-display); font-variant-numeric: tabular-nums }
+.attn-cell.hot .big { color: var(--bad) }
+.attn-cell.amber .big { color: var(--warn) }
+.attn-cell ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px }
+.attn-cell li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.attn-cell li a { color: inherit; text-decoration: none; cursor: pointer }
+.attn-cell li a:hover { color: var(--accent) }
+
+/* solution sheets */
+.sol-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px }
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; min-width: 0 }
+.sheet-head { padding: 14px 16px 10px; display: flex; gap: 10px; align-items: flex-start }
+.sheet-head > div { flex: 1; min-width: 0 }
+.sheet p { margin: 4px 0 0; color: var(--muted); font-size: 13px }
+.rag { width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; flex: none; box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px currentColor }
+.rag.green { color: var(--ok); background: var(--ok) } .rag.amber { color: var(--warn); background: var(--warn) } .rag.red { color: var(--bad); background: var(--bad) }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line) }
+.metrics div { padding: 9px 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 1px }
+.metrics div:last-child { border-right: 0 }
+.metrics b { font: 600 17px var(--f-display); font-variant-numeric: tabular-nums }
+.metrics span { font: 10.5px var(--f-mono); color: var(--muted); text-transform: uppercase; letter-spacing: .05em }
+.metrics .hot b { color: var(--bad) }
+.sheet-foot { border-top: 1px solid var(--line); padding: 8px 12px 8px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
+.faces { display: flex; gap: 4px; flex-wrap: wrap; flex: 1 }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; font: 500 11px/1 var(--f-mono); padding: 4px 7px; border-radius: 999px; white-space: nowrap; letter-spacing: .02em }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor }
+.pill.ok { color: var(--ok); background: var(--ok-soft) } .pill.warn { color: var(--warn); background: var(--warn-soft) }
+.pill.bad { color: var(--bad); background: var(--bad-soft) } .pill.idle { color: var(--idle); background: var(--idle-soft) }
+.pill.acc { color: var(--accent); background: var(--accent-soft) }
+.tag { font: 11px var(--f-mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; white-space: nowrap }
+.ex { font: 500 10px var(--f-mono); color: var(--warn); border: 1px dashed var(--warn); border-radius: 4px; padding: 1px 5px; text-transform: uppercase; letter-spacing: .05em }
+.avatar { width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font: 600 10px var(--f-mono); background: var(--accent-soft); color: var(--accent); position: relative; flex: none }
+.avatar i { position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--surface) }
+
+/* board */
+.board { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px }
+.lane { background: var(--idle-soft); border-radius: var(--r); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.lane-head { display: flex; justify-content: space-between; align-items: center; padding: 0 2px }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; text-align: left; width: 100% }
+.card:hover { border-color: var(--accent) }
+.card.blocked { border-left: 3px solid var(--bad) }
+.card .t { font-weight: 600; overflow-wrap: anywhere }
+.card .meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted) }
+.prio { font: 600 10.5px var(--f-mono); padding: 2px 5px; border-radius: 3px }
+.prio.P1 { background: var(--bad-soft); color: var(--bad) } .prio.P2 { background: var(--warn-soft); color: var(--warn) } .prio.P3 { background: var(--idle-soft); color: var(--idle) }
+.due.over { color: var(--bad); font-weight: 600 }
+.lane .empty { font-size: 12px; color: var(--muted); padding: 8px 2px }
+
+/* ADR log */
+.log { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden }
+.adr { border-bottom: 1px solid var(--line) }
+.adr:last-child { border-bottom: 0 }
+.adr summary { list-style: none; display: grid; grid-template-columns: 76px 1fr auto auto; gap: 12px; align-items: center; padding: 11px 14px; cursor: pointer }
+.adr summary::-webkit-details-marker { display: none }
+.adr summary:hover { background: var(--bg) }
+.adr .num { font: 500 12px var(--f-mono); color: var(--accent) }
+.adr .ttl { font-weight: 600; min-width: 0; overflow-wrap: anywhere }
+.adr .ttl .tag { margin-left: 6px; font-weight: 400 }
+.adr-body { padding: 4px 14px 16px 102px; display: grid; gap: 12px; max-width: 900px }
+.adr-body h4 { margin: 0 0 2px; font: 500 11px var(--f-mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.adr-body p { margin: 0; white-space: pre-wrap }
+
+/* team */
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px }
+.person { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.person-top { display: flex; gap: 10px; align-items: center }
+.person-top .avatar { width: 36px; height: 36px; font-size: 12px }
+.person-top > div { flex: 1; min-width: 0 }
+.person .note { font-size: 13px; margin: 0; overflow-wrap: anywhere }
+.person .foot { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px }
+
+.emptybox { border: 1px dashed var(--line); border-radius: var(--r); padding: 28px 20px; text-align: center; color: var(--muted); display: flex; flex-direction: column; gap: 10px; align-items: center; background: var(--surface) }
+.emptybox strong { color: var(--ink); font: 600 16px var(--f-display) }
+
+/* dialog */
+dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(560px, calc(100vw - 32px)); background: var(--surface); color: var(--ink) }
+dialog::backdrop { background: rgb(10 16 22 / .45) }
+dialog form { display: flex; flex-direction: column; max-height: 85vh }
+.dlg-head { padding: 16px 18px 8px; display: flex; justify-content: space-between; align-items: center }
+.dlg-body { padding: 8px 18px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px }
+.dlg-body label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 500 }
+.dlg-body label > :is(input, select, textarea) { color: var(--ink); font-size: 14px }
+.dlg-body textarea { min-height: 70px; resize: vertical }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--ink); font-weight: 400 }
+.checks label { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); font-size: 13px; font-weight: 400 }
+.dlg-foot { padding: 12px 18px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.err { color: var(--bad); font-size: 12.5px }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: var(--r); font-size: 13px; z-index: 20 }
+
+@media (max-width: 640px) {
+  .two { grid-template-columns: 1fr }
+  .adr summary { grid-template-columns: 1fr auto; }
+  .adr summary .num { grid-column: 1 / -1 }
+  .adr summary .date { display: none }
+  .adr-body { padding-left: 14px }
+  .board { grid-template-columns: repeat(4, 80vw) }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important } }
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="row1">
+      <div class="brand">TechLead <small>Architect's desk</small></div>
+      <div class="spacer"></div>
+      <label class="field-inline" for="solFilter">Solution
+        <select id="solFilter"><option value="">All solutions</option></select>
+      </label>
+      <button class="btn primary" id="newBtn" type="button">New</button>
+    </div>
+    <nav class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+      <button role="tab" data-tab="tasks" aria-selected="false">Tasks<span class="n" id="n-tasks"></span></button>
+      <button role="tab" data-tab="decisions" aria-selected="false">Decisions<span class="n" id="n-decisions"></span></button>
+      <button role="tab" data-tab="team" aria-selected="false">Team<span class="n" id="n-team"></span></button>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="emptybox" id="boot">
+    <strong>Opening your desk</strong>
+    <span>Solutions, tasks, decisions and team status load here once your data connects.</span>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="dlgForm" novalidate>
+    <div class="dlg-head"><h2 id="dlgTitle">New</h2><button class="btn ghost" type="button" id="dlgClose" aria-label="Close">Close</button></div>
+    <div class="dlg-body" id="dlgBody"></div>
+    <div class="dlg-foot">
+      <button class="btn primary" type="submit" id="dlgSave">Save</button>
+      <button class="btn" type="button" id="dlgCancel">Cancel</button>
+      <span class="spacer"></span>
+      <span class="err" id="dlgErr"></span>
+      <button class="btn danger" type="button" id="dlgDelete" hidden>Delete</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const S = { solutions: [], tasks: [], decisions: [], people: [] };
+const loaded = { solutions: false, tasks: false, decisions: false, people: false };
+let db = null, canWrite = true, tab = "overview", solFilter = "";
+
+const HEALTH = { green: ["On track", "ok"], amber: ["At risk", "warn"], red: ["Off track", "bad"] };
+const PHASES = ["Discovery", "Design", "Build", "Run", "Sunset"];
+const TSTATUS = { todo: "To do", doing: "In progress", blocked: "Blocked", done: "Done" };
+const DSTATUS = { proposed: ["Proposed", "warn"], accepted: ["Accepted", "ok"], superseded: ["Superseded", "idle"], rejected: ["Rejected", "bad"] };
+const PSTATUS = { "on-track": ["On track", "ok"], overloaded: ["Overloaded", "warn"], blocked: ["Blocked", "bad"], away: ["Away", "idle"] };
+const PCOLOR = { "on-track": "var(--ok)", overloaded: "var(--warn)", blocked: "var(--bad)", away: "var(--idle)" };
+
+try { const t = localStorage.getItem("tl.tab"); if (t) tab = t; solFilter = localStorage.getItem("tl.sol") || ""; } catch (e) {}
+if (/^#(overview|tasks|decisions|team)$/.test(location.hash)) tab = location.hash.slice(1);
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = s => document.querySelector(s);
+const today = () => new Date().toISOString().slice(0, 10);
+const byId = (list, id) => list.find(x => x.id === id);
+const solName = id => byId(S.solutions, id)?.name || "";
+const initials = n => String(n || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+const fmtDate = d => d ? new Date(d + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "";
+const isOver = t => t.due && t.status !== "done" && t.due < today();
+const pill = ([label, cls]) => `<span class="pill ${cls}">${esc(label)}</span>`;
+const exMark = o => o.example ? `<span class="ex" title="Example data">Example</span>` : "";
+const adrNum = n => "ADR-" + String(n || 0).padStart(3, "0");
+const inSol = (o, key = "solutionId") => !solFilter || (Array.isArray(o[key]) ? o[key].includes(solFilter) : o[key] === solFilter);
+
+function toast(msg) {
+  const el = document.createElement("div"); el.className = "toast"; el.textContent = msg;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 2200);
+}
+
+/* ---------- render ---------- */
+function render() {
+  const sel = $("#solFilter"), cur = solFilter;
+  sel.innerHTML = `<option value="">All solutions</option>` + S.solutions.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+  sel.value = byId(S.solutions, cur) ? cur : ""; solFilter = sel.value;
+
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
+  const openTasks = S.tasks.filter(t => t.status !== "done" && inSol(t));
+  $("#n-tasks").textContent = openTasks.length || "";
+  $("#n-decisions").textContent = S.decisions.filter(d => inSol(d)).length || "";
+  $("#n-team").textContent = S.people.filter(p => inSol(p, "solutionIds")).length || "";
+  $("#newBtn").textContent = { overview: "New solution", tasks: "New task", decisions: "New decision", team: "Add person" }[tab];
+  $("#newBtn").hidden = !canWrite;
+
+  const main = $("#main");
+  if (!db) { main.innerHTML = noDbView(); return; }
+  if (!Object.values(loaded).every(Boolean)) return;
+  const banner = exampleBanner();
+  main.innerHTML = banner + ({ overview: overviewView, tasks: tasksView, decisions: decisionsView, team: teamView }[tab])();
+}
+
+function noDbView() {
+  return `<div class="emptybox"><strong>Your data isn't connected in this view</strong>
+    <span>Open this page in claude.ai while signed in to load and save your solutions, tasks, decisions and team.</span></div>`;
+}
+
+function exampleBanner() {
+  const n = ["solutions", "tasks", "decisions", "people"].reduce((a, k) => a + S[k].filter(x => x.example).length, 0);
+  if (!n) return "";
+  return `<div class="notice warn" style="margin-bottom:18px"><span>Items marked <span class="ex">Example</span> are sample data to show how the desk works. Add your own, then clear them.</span>
+    <span class="spacer"></span>${canWrite ? `<button class="btn" type="button" data-act="clear-examples" id="clearEx">Clear ${n} examples</button>` : ""}</div>`;
+}
+
+function overviewView() {
+  if (!S.solutions.length) return `<div class="emptybox"><strong>No solutions yet</strong>
+    <span>Start with each solution you lead. Tasks, decisions and people all hang off a solution.</span>
+    ${canWrite ? `<button class="btn primary" type="button" data-act="new" data-kind="solution">Add your first solution</button>` : ""}</div>`;
+
+  const T = S.tasks.filter(t => inSol(t)), D = S.decisions.filter(d => inSol(d)), P = S.people.filter(p => inSol(p, "solutionIds"));
+  const blocked = T.filter(t => t.status === "blocked");
+  const overdue = T.filter(isOver);
+  const pending = D.filter(d => d.status === "proposed");
+  const people = P.filter(p => p.status === "blocked" || p.status === "overloaded");
+  const li = (items, fn) => items.length ? `<ul>${items.slice(0, 4).map(fn).join("")}${items.length > 4 ? `<li class="muted">and ${items.length - 4} more</li>` : ""}</ul>` : `<ul><li class="muted">Nothing here</li></ul>`;
+  const link = (kind, o, label) => `<li><a data-act="edit" data-kind="${kind}" data-id="${esc(o.id)}">${label}</a></li>`;
+
+  const attn = `<section><div class="section-head"><h2>Needs your attention</h2><span class="eyebrow">${esc(new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }))}</span></div>
+  <div class="attn">
+    <div class="attn-cell ${blocked.length ? "hot" : ""}"><span class="eyebrow">Blocked tasks</span><span class="big">${blocked.length}</span>${li(blocked, t => link("task", t, esc(t.title)))}</div>
+    <div class="attn-cell ${overdue.length ? "hot" : ""}"><span class="eyebrow">Overdue</span><span class="big">${overdue.length}</span>${li(overdue, t => link("task", t, `${esc(t.title)} <span class="muted">· ${fmtDate(t.due)}</span>`))}</div>
+    <div class="attn-cell ${pending.length ? "amber" : ""}"><span class="eyebrow">Decisions to make</span><span class="big">${pending.length}</span>${li(pending, d => link("decision", d, `<span class="mono">${adrNum(d.num)}</span> ${esc(d.title)}`))}</div>
+    <div class="attn-cell ${people.length ? "amber" : ""}"><span class="eyebrow">People needing support</span><span class="big">${people.length}</span>${li(people, p => link("person", p, `${esc(p.name)} <span class="muted">· ${esc(PSTATUS[p.status][0].toLowerCase())}</span>`))}</div>
+  </div></section>`;
+
+  const sols = S.solutions.filter(s => !solFilter || s.id === solFilter);
+  const cards = sols.map(s => {
+    const st = S.tasks.filter(t => t.solutionId === s.id);
+    const open = st.filter(t => t.status !== "done").length, blk = st.filter(t => t.status === "blocked").length;
+    const sd = S.decisions.filter(d => d.solutionId === s.id), prop = sd.filter(d => d.status === "proposed").length;
+    const team = S.people.filter(p => (p.solutionIds || []).includes(s.id));
+    const h = HEALTH[s.health] || HEALTH.green;
+    return `<article class="sheet">
+      <div class="sheet-head"><span class="rag ${esc(s.health || "green")}" title="${esc(h[0])}"></span>
+        <div><h3>${esc(s.name)} ${exMark(s)}</h3>${s.summary ? `<p>${esc(s.summary)}</p>` : ""}</div>
+        <span class="tag">${esc(s.phase || "Discovery")}</span></div>
+      <div class="metrics">
+        <div><b>${open}</b><span>Open</span></div>
+        <div class="${blk ? "hot" : ""}"><b>${blk}</b><span>Blocked</span></div>
+        <div><b>${prop}</b><span>Pending ADR</span></div>
+        <div><b>${team.length}</b><span>People</span></div>
+      </div>
+      <div class="sheet-foot"><div class="faces">${team.map(p => `<span class="avatar" title="${esc(p.name)}: ${esc(PSTATUS[p.status]?.[0] || "")}">${esc(initials(p.name))}<i style="background:${PCOLOR[p.status] || "var(--idle)"}"></i></span>`).join("") || `<span class="muted" style="font-size:12px">No one assigned</span>`}</div>
+        ${pill(h)}${canWrite ? `<button class="btn ghost" type="button" data-act="edit" data-kind="solution" data-id="${esc(s.id)}">Edit</button>` : ""}</div>
+    </article>`;
+  }).join("");
+
+  return `<div class="stack">${attn}<section><div class="section-head"><h2>Solutions</h2><span class="eyebrow">${sols.length} active</span></div><div class="sol-grid">${cards}</div></section></div>`;
+}
+
+function tasksView() {
+  const T = S.tasks.filter(t => inSol(t));
+  const lanes = Object.entries(TSTATUS).map(([k, label]) => {
+    const items = T.filter(t => (t.status || "todo") === k).sort((a, b) => (a.priority || "P3").localeCompare(b.priority || "P3") || (a.due || "9").localeCompare(b.due || "9"));
+    return `<div class="lane"><div class="lane-head"><span class="eyebrow">${label}</span><span class="mono muted" style="font-size:12px">${items.length}</span></div>
+      ${items.map(t => {
+        const owner = byId(S.people, t.ownerId);
+        return `<button class="card ${k === "blocked" ? "blocked" : ""}" type="button" data-act="edit" data-kind="task" data-id="${esc(t.id)}">
+          <span class="t">${esc(t.title)}</span>
+          <span class="meta"><span class="prio ${esc(t.priority || "P3")}">${esc(t.priority || "P3")}</span>
+            ${t.solutionId ? `<span class="tag">${esc(solName(t.solutionId))}</span>` : ""}
+            ${owner ? `<span>${esc(owner.name)}</span>` : ""}
+            ${t.due ? `<span class="due mono ${isOver(t) ? "over" : ""}">${fmtDate(t.due)}</span>` : ""}${exMark(t)}</span>
+        </button>`;
+      }).join("") || `<div class="empty">${k === "blocked" ? "Nothing blocked" : "Empty"}</div>`}
+    </div>`;
+  }).join("");
+  return (!S.tasks.length ? `<div class="notice" style="margin-bottom:14px">No tasks yet. Use New task to add one, then move it across the board by editing its status.</div>` : "") + `<div class="board">${lanes}</div>`;
+}
+
+function decisionsView() {
+  const D = S.decisions.filter(d => inSol(d)).sort((a, b) => (b.num || 0) - (a.num || 0));
+  if (!D.length) return `<div class="emptybox"><strong>No decisions recorded</strong>
+    <span>Log architecture decisions as numbered records: the context, what you chose, and what follows from it.</span>
+    ${canWrite ? `<button class="btn primary" type="button" data-act="new" data-kind="decision">Record a decision</button>` : ""}</div>`;
+  return `<div class="section-head"><h2>Decision log</h2><span class="eyebrow">Architecture decision records</span></div><div class="log">${D.map(d => `
+    <details class="adr"><summary><span class="num">${adrNum(d.num)}</span>
+      <span class="ttl">${esc(d.title)}${d.solutionId ? `<span class="tag">${esc(solName(d.solutionId))}</span>` : ""} ${exMark(d)}</span>
+      <span class="date mono muted" style="font-size:12px">${esc(d.date || "")}</span>${pill(DSTATUS[d.status] || DSTATUS.proposed)}</summary>
+      <div class="adr-body">
+        ${d.context ? `<div><h4>Context</h4><p>${esc(d.context)}</p></div>` : ""}
+        ${d.decision ? `<div><h4>Decision</h4><p>${esc(d.decision)}</p></div>` : ""}
+        ${d.consequences ? `<div><h4>Consequences</h4><p>${esc(d.consequences)}</p></div>` : ""}
+        ${canWrite ? `<div><button class="btn" type="button" data-act="edit" data-kind="decision" data-id="${esc(d.id)}">Edit record</button></div>` : ""}
+      </div></details>`).join("")}</div>`;
+}
+
+function teamView() {
+  const P = S.people.filter(p => inSol(p, "solutionIds"));
+  if (!P.length) return `<div class="emptybox"><strong>No one on the roster</strong>
+    <span>Add the people across your solutions and keep a one-line status for each: on track, overloaded, blocked or away.</span>
+    ${canWrite ? `<button class="btn primary" type="button" data-act="new" data-kind="person">Add a person</button>` : ""}</div>`;
+  const order = { blocked: 0, overloaded: 1, "on-track": 2, away: 3 };
+  return `<div class="roster">${P.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)).map(p => {
+    const open = S.tasks.filter(t => t.ownerId === p.id && t.status !== "done").length;
+    return `<article class="person"><div class="person-top"><span class="avatar">${esc(initials(p.name))}</span>
+      <div><h3>${esc(p.name)} ${exMark(p)}</h3><span class="muted" style="font-size:12.5px">${esc(p.role || "")}</span></div>${pill(PSTATUS[p.status] || PSTATUS["on-track"])}</div>
+      ${p.note ? `<p class="note">${esc(p.note)}</p>` : `<p class="note muted">No status note</p>`}
+      <div class="foot">${(p.solutionIds || []).map(id => solName(id) ? `<span class="tag">${esc(solName(id))}</span>` : "").join("")}
+        <span class="spacer" style="flex:1"></span><span class="mono muted">${open} open</span>
+        ${canWrite ? `<button class="btn ghost" type="button" data-act="edit" data-kind="person" data-id="${esc(p.id)}">Update</button>` : ""}</div>
+      ${p.updated ? `<span class="muted mono" style="font-size:11px">Status as of ${fmtDate(p.updated)}</span>` : ""}
+    </article>`;
+  }).join("")}</div>`;
+}
+
+/* ---------- forms ---------- */
+const COL = { solution: "solutions", task: "tasks", decision: "decisions", person: "people" };
+const opts = (pairs, v) => pairs.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? "selected" : ""}>${esc(l)}</option>`).join("");
+const solOpts = v => `<option value="">No solution</option>` + opts(S.solutions.map(s => [s.id, s.name]), v);
+const F = {
+  solution: o => `
+    <label for="f-name">Name<input type="text" id="f-name" name="name" required value="${esc(o.name)}" placeholder="Payments platform"></label>
+    <label for="f-summary">One-line purpose<textarea id="f-summary" name="summary" placeholder="What this solution is for">${esc(o.summary)}</textarea></label>
+    <div class="two"><label for="f-health">Health<select id="f-health" name="health">${opts(Object.entries(HEALTH).map(([k, v]) => [k, v[0]]), o.health || "green")}</select></label>
+    <label for="f-phase">Phase<select id="f-phase" name="phase">${opts(PHASES.map(p => [p, p]), o.phase || "Discovery")}</select></label></div>`,
+  task: o => `
+    <label for="f-title">Task<input type="text" id="f-title" name="title" required value="${esc(o.title)}"></label>
+    <div class="two"><label for="f-sol">Solution<select id="f-sol" name="solutionId">${solOpts(o.solutionId ?? solFilter)}</select></label>
+    <label for="f-owner">Owner<select id="f-owner" name="ownerId"><option value="">Unassigned</option>${opts(S.people.map(p => [p.id, p.name]), o.ownerId)}</select></label></div>
+    <div class="two"><label for="f-status">Status<select id="f-status" name="status">${opts(Object.entries(TSTATUS), o.status || "todo")}</select></label>
+    <label for="f-prio">Priority<select id="f-prio" name="priority">${opts([["P1", "P1, urgent"], ["P2", "P2, soon"], ["P3", "P3, when possible"]], o.priority || "P2")}</select></label></div>
+    <label for="f-due">Due date<input type="date" id="f-due" name="due" value="${esc(o.due)}"></label>
+    <label for="f-notes">Notes<textarea id="f-notes" name="notes">${esc(o.notes)}</textarea></label>`,
+  decision: o => `
+    <label for="f-title">Decision title<input type="text" id="f-title" name="title" required value="${esc(o.title)}" placeholder="Use event sourcing for order history"></label>
+    <div class="two"><label for="f-sol">Solution<select id="f-sol" name="solutionId">${solOpts(o.solutionId ?? solFilter)}</select></label>
+    <label for="f-status">Status<select id="f-status" name="status">${opts(Object.entries(DSTATUS).map(([k, v]) => [k, v[0]]), o.status || "proposed")}</select></label></div>
+    <label for="f-date">Date<input type="date" id="f-date" name="date" value="${esc(o.date || today())}"></label>
+    <label for="f-context">Context<textarea id="f-context" name="context" placeholder="The forces at play and the problem to solve">${esc(o.context)}</textarea></label>
+    <label for="f-decision">Decision<textarea id="f-decision" name="decision" placeholder="What we chose, and the options we rejected">${esc(o.decision)}</textarea></label>
+    <label for="f-cons">Consequences<textarea id="f-cons" name="consequences" placeholder="What becomes easier or harder">${esc(o.consequences)}</textarea></label>`,
+  person: o => `
+    <div class="two"><label for="f-name">Name<input type="text" id="f-name" name="name" required value="${esc(o.name)}"></label>
+    <label for="f-role">Role<input type="text" id="f-role" name="role" value="${esc(o.role)}" placeholder="Backend engineer"></label></div>
+    <label for="f-status">Status<select id="f-status" name="status">${opts(Object.entries(PSTATUS).map(([k, v]) => [k, v[0]]), o.status || "on-track")}</select></label>
+    <label for="f-note">Status note<textarea id="f-note" name="note" placeholder="What they're on, what's in the way">${esc(o.note)}</textarea></label>
+    <div><span class="muted" style="font-size:12px;font-weight:500">Works on</span><div class="checks">${S.solutions.map((s, i) => `<label for="f-s${i}"><input type="checkbox" id="f-s${i}" name="solutionIds" value="${esc(s.id)}" ${(o.solutionIds || (solFilter ? [solFilter] : [])).includes(s.id) ? "checked" : ""}> ${esc(s.name)}</label>`).join("") || `<span class="muted">Add a solution first</span>`}</div></div>`,
+};
+const LABEL = { solution: "solution", task: "task", decision: "decision", person: "person" };
+let editing = null, confirmDel = false;
+
+function openForm(kind, id) {
+  const o = id ? { ...byId(S[COL[kind]], id) } : {};
+  if (id && !o.id) return;
+  editing = { kind, id };
+  confirmDel = false;
+  $("#dlgTitle").textContent = id ? (kind === "decision" ? `Edit ${adrNum(o.num)}` : `Edit ${LABEL[kind]}`) : (kind === "person" ? "Add person" : `New ${LABEL[kind]}`);
+  $("#dlgBody").innerHTML = F[kind](o);
+  $("#dlgErr").textContent = "";
+  $("#dlgDelete").hidden = !id || !canWrite;
+  $("#dlgDelete").textContent = "Delete";
+  $("#dlgSave").hidden = !canWrite;
+  $("#dlg").showModal();
+  setTimeout(() => $("#dlgBody input[type=text]")?.focus(), 30);
+}
+
+async function save(e) {
+  e.preventDefault();
+  if (!editing || !db) return;
+  const { kind, id } = editing, fd = new FormData($("#dlgForm"));
+  const data = {};
+  for (const [k, v] of fd.entries()) {
+    if (k === "solutionIds") (data[k] ||= []).push(v); else data[k] = String(v).trim();
+  }
+  if (kind === "person") { data.solutionIds ||= []; data.updated = today(); }
+  const req = $("#dlgBody [required]");
+  if (req && !req.value.trim()) { $("#dlgErr").textContent = "Give it a name before saving."; req.focus(); return; }
+  $("#dlgSave").disabled = true;
+  try {
+    const col = db.collection(COL[kind]);
+    if (id) {
+      const prev = byId(S[COL[kind]], id) || {};
+      if (kind === "person" && prev.status === data.status && prev.note === data.note) data.updated = prev.updated || today();
+      await col.doc(id).update(data);
+    } else {
+      data.created = new Date().toISOString();
+      if (kind === "decision") data.num = S.decisions.reduce((m, d) => Math.max(m, d.num || 0), 0) + 1;
+      await col.doc().set(data);
+    }
+    $("#dlg").close(); toast(id ? "Saved" : `${kind === "person" ? "Person" : LABEL[kind][0].toUpperCase() + LABEL[kind].slice(1)} added`);
+  } catch (err) { $("#dlgErr").textContent = writeErr(err); }
+  finally { $("#dlgSave").disabled = false; }
+}
+
+function writeErr(err) {
+  if (err?.code === "invalid_argument") { canWrite = false; render(); return "You can view this desk but not change it."; }
+  if (err?.code === "quota_exceeded") return "Storage is full. Delete some old items, then try again.";
+  return "Couldn't save just now. Check your connection and try again.";
+}
+
+async function del() {
+  if (!editing?.id) return;
+  if (!confirmDel) { confirmDel = true; $("#dlgDelete").textContent = "Click again to delete"; return; }
+  const { kind, id } = editing;
+  try {
+    await db.collection(COL[kind]).doc(id).delete();
+    if (kind === "solution") toast("Solution deleted. Its tasks and decisions stay, unlinked.");
+    else toast("Deleted");
+    $("#dlg").close();
+  } catch (err) { $("#dlgErr").textContent = writeErr(err); }
+}
+
+let clearArmed = false;
+async function clearExamples(btn) {
+  if (!clearArmed) { clearArmed = true; btn.textContent = "Click again to clear examples"; return; }
+  clearArmed = false; btn.disabled = true;
+  try {
+    for (const k of ["tasks", "decisions", "people", "solutions"]) for (const o of S[k].filter(x => x.example)) await db.collection(k).doc(o.id).delete();
+    toast("Examples cleared");
+  } catch (err) { toast(writeErr(err)); }
+}
+
+/* ---------- events ---------- */
+$("#tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]"); if (!b) return;
+  tab = b.dataset.tab; try { localStorage.setItem("tl.tab", tab); } catch (e) {} render();
+});
+$("#solFilter").addEventListener("change", e => { solFilter = e.target.value; try { localStorage.setItem("tl.sol", solFilter); } catch (e) {} render(); });
+$("#newBtn").addEventListener("click", () => {
+  const kind = { overview: "solution", tasks: "task", decisions: "decision", team: "person" }[tab];
+  openForm(kind);
+});
+$("#main").addEventListener("click", e => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  if (el.dataset.act === "edit") { e.preventDefault(); openForm(el.dataset.kind, el.dataset.id); }
+  if (el.dataset.act === "new") openForm(el.dataset.kind);
+  if (el.dataset.act === "clear-examples") clearExamples(el);
+});
+$("#dlgForm").addEventListener("submit", save);
+$("#dlgCancel").addEventListener("click", () => $("#dlg").close());
+$("#dlgClose").addEventListener("click", () => $("#dlg").close());
+$("#dlgDelete").addEventListener("click", del);
+
+/* ---------- data ---------- */
+async function start() {
+  render();
+  try { db = window.claude ? await window.claude.use("db") : null; } catch (e) { db = null; }
+  if (!db) { render(); return; }
+  try {
+    const user = await window.claude.use("user");
+    const w = user ? await user.can("data.write") : null;
+    if (w === false) canWrite = false;
+  } catch (e) {}
+  for (const k of Object.keys(S)) {
+    db.collection(k).orderBy("created").onSnapshot(snap => {
+      S[k] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      loaded[k] = true; render();
+    }, () => { loaded[k] = true; render(); });
+  }
+}
+start();
+</script>
