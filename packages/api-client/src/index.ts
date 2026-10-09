@@ -2,6 +2,13 @@ import type { Proposal, Role, Solution, Task, Visibility } from "@techlead/share
 
 export type Me = { id: string; workspaceId: string; role: Role; displayName: string };
 
+export type IntegrationStatus = {
+  jira: { available: boolean; connected: boolean; site: string | null };
+  microsoft: { connected: boolean; lastSyncedAt: string | null };
+};
+
+export type JiraProjectChoice = { key: string; name: string; selected: boolean; solutionId: string | null };
+
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
@@ -41,6 +48,14 @@ export function createApiClient(baseUrl: string, getToken: () => Promise<string 
     acceptProposal: (id: string, visibility: Visibility) =>
       call<{ table: string }>(`/v1/proposals/${id}/accept`, { method: "POST", body: JSON.stringify({ visibility }) }),
     rejectProposal: (id: string) => call<void>(`/v1/proposals/${id}/reject`, { method: "POST" }),
+    integrations: () => call<IntegrationStatus>("/v1/integrations"),
+    jiraConnectUrl: () => call<{ url: string }>("/v1/integrations/jira/connect", { method: "POST" }),
+    jiraProjects: () => call<JiraProjectChoice[]>("/v1/integrations/jira/projects"),
+    saveJiraProjects: (projects: { key: string; solutionId: string | null }[]) =>
+      call<void>("/v1/integrations/jira/projects", { method: "PUT", body: JSON.stringify({ projects }) }),
+    saveMicrosoftToken: (input: { accessToken: string; refreshToken: string | null }) =>
+      call<void>("/v1/integrations/microsoft", { method: "POST", body: JSON.stringify(input) }),
+    disconnect: (provider: "jira" | "microsoft") => call<void>(`/v1/integrations/${provider}`, { method: "DELETE" }),
   };
 }
 

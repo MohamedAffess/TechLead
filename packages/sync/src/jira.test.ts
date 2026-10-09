@@ -34,3 +34,13 @@ describe("jira client", () => {
     expect(text).toBe("PAY-1: SSO\nStatus: Blocked\nAssignee: unassigned\nDue: none");
   });
 });
+
+describe("jiraAuthorizeUrl", () => {
+  it("asks Atlassian for read-only access", async () => {
+    const { jiraAuthorizeUrl } = await import("./jira.js");
+    const url = new URL(jiraAuthorizeUrl({ clientId: "c", redirectUri: "https://api/cb", state: "s" }));
+    expect(url.origin).toBe("https://auth.atlassian.com");
+    expect(url.searchParams.get("scope")).toBe("read:jira-work read:jira-user offline_access");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://api/cb");
+  });
+});

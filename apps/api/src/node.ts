@@ -3,8 +3,10 @@ import { serve } from "@hono/node-server";
 import { dbConfigFromEnv } from "@techlead/db";
 import { createApp } from "./app.js";
 import { supabaseMembers } from "./members.js";
+import { integrationsFromEnv } from "./tokens.js";
 
-const app = createApp({ resolveMember: supabaseMembers(dbConfigFromEnv()) });
+const config = dbConfigFromEnv();
+const app = createApp({ resolveMember: supabaseMembers(config), integrations: integrationsFromEnv(config) });
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port });
 console.log(`TechLead API on http://localhost:${port}`);
