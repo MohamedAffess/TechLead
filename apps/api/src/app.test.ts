@@ -51,3 +51,53 @@ describe("recordFromProposal", () => {
     expect(r).toMatchObject({ table: "tasks", row: { status: "todo", visibility: "private" } });
   });
 });
+
+describe("records and setup", () => {
+  const owner: Member = { id: "m1", workspaceId: "w1", role: "owner", displayName: "Owner" };
+  /** A stand-in for the Supabase query builder: every call chains, and awaiting it gives `result`. */
+  const fakeDb = (result: { data: unknown; error: null }) => {
+    const chain: Record<string, unknown> = {};
+    for (const m of ["from", "select", "update", "insert", "eq", "order", "single"]) chain[m] = () => chain;
+    chain.then = (resolve: (v: unknown) => void) => resolve(result);
+    return chain as never;
+  };
+  const json = { "Content-Type": "application/json", Authorization: "Bearer x" };
+
+  it("speaks camelCase", async () => {
+    const { camel } = await import("./app.js");
+    expect(camel({ owner_member_id: "m1", jira_key: null, title: "t" })).toEqual({ ownerMemberId: "m1", jiraKey: null, title: "t" });
+  });
+
+  it("refuses a status change the database filtered out", async () => {
+    const app = createApp({ resolveMember: async () => ({ member: teamMember, db: fakeDb({ data: [], error: null }) }) });
+    const res = await app.request("/v1/tasks/t1", { method: "PATCH", headers: json, body: JSON.stringify({ status: "done" }) });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns the updated task in camelCase", async () => {
+    const app = createApp({ resolveMember: async () => ({ member: owner, db: fakeDb({ data: [{ id: "t1", owner_member_id: null, status: "done" }], error: null }) }) });
+    const res = await app.request("/v1/tasks/t1", { method: "PATCH", headers: json, body: JSON.stringify({ status: "done" }) });
+    expect(await res.json()).toEqual({ id: "t1", ownerMemberId: null, status: "done" });
+  });
+
+  it("explains how to turn on AI drafting when no key is set", async () => {
+    const app = createApp({ resolveMember: async () => ({ member: owner, db: {} as never }) });
+    const res = await app.request("/v1/workspace/draft", { method: "POST", headers: json, body: JSON.stringify({ companyName: "Infor", aboutMe: "I lead three solutions as architect." }) });
+    expect(res.status).toBe(503);
+  });
+
+  it("passes the description to the drafter", async () => {
+    const app = createApp({
+      resolveMember: async () => ({ member: owner, db: {} as never }),
+      draftProfile: async (input) => ({ profile: `About ${input.companyName}`, focus: "f", solutions: [] }),
+    });
+    const res = await app.request("/v1/workspace/draft", { method: "POST", headers: json, body: JSON.stringify({ companyName: "Infor", aboutMe: "I lead three solutions as architect." }) });
+    expect(await res.json()).toMatchObject({ profile: "About Infor" });
+  });
+
+  it("keeps company settings owner-only", async () => {
+    const app = createApp({ resolveMember: async () => ({ member: teamMember, db: {} as never }) });
+    const res = await app.request("/v1/workspace", { method: "PATCH", headers: json, body: JSON.stringify({ focus: "x" }) });
+    expect(res.status).toBe(403);
+  });
+});

@@ -1,8 +1,8 @@
 name: Worker
 
 # Runs the background jobs (Jira and Teams sync, AI extraction) on a schedule.
-# Free for public repositories. Turn it on by setting the repository
-# variable WORKER_ENABLED to "true" once the secrets below are added.
+# Free for public repositories. It skips itself until ANTHROPIC_API_KEY and
+# either SUPABASE_ACCESS_TOKEN (fast path) or the SUPABASE_* keys are set.
 on:
   schedule:
     - cron: "*/30 * * * *"
@@ -14,23 +14,48 @@ concurrency:
 
 jobs:
   run:
-    if: ${{ vars.WORKER_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - name: Check the secrets are set
+        id: ready
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ] && { [ -n "$SUPABASE_ACCESS_TOKEN" ] || [ -n "$SUPABASE_URL" ]; }; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            [ -z "$SUPABASE_URL" ] && echo "lookup=true" >> "$GITHUB_OUTPUT"
+            true
+          else
+            echo "::notice::Skipped: TechLead is not set up yet (docs/DEPLOYMENT.md)."
+          fi
+      - if: steps.ready.outputs.go == 'true'
+        uses: actions/checkout@v4
+      - if: steps.ready.outputs.go == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.ready.outputs.go == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @techlead/shared --filter @techlead/db --filter @techlead/ai --filter @techlead/sync build
-      - run: pnpm --filter @techlead/worker once
+      - if: steps.ready.outputs.go == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.ready.outputs.go == 'true'
+        run: pnpm --filter @techlead/shared --filter @techlead/db --filter @techlead/ai --filter @techlead/sync build
+      # Fast path: read the Supabase keys from the account token instead of storing them as secrets.
+      - name: Look up Supabase settings
+        if: steps.ready.outputs.lookup == 'true'
+        run: node scripts/go-live.mjs worker-env
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - if: steps.ready.outputs.go == 'true'
+        run: pnpm --filter @techlead/worker once
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || env.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           JIRA_CLIENT_ID: ${{ secrets.JIRA_CLIENT_ID }}
           JIRA_CLIENT_SECRET: ${{ secrets.JIRA_CLIENT_SECRET }}

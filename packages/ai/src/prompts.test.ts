@@ -22,3 +22,10 @@ describe("contextBlock", () => {
     expect(text).toContain("- none yet");
   });
 });
+
+describe("profile prompt", () => {
+  it("tells the model not to invent internal details", async () => {
+    const { PROFILE_SYSTEM_PROMPT } = await import("./profile.js");
+    expect(PROFILE_SYSTEM_PROMPT).toContain("never invent internal details");
+  });
+});

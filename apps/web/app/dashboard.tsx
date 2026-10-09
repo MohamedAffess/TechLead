@@ -1,26 +1,66 @@
 "use client";
 import type { Me } from "@techlead/api-client";
-import { MICROSOFT_SCOPES, type Proposal, type Solution } from "@techlead/shared";
+import { MICROSOFT_SCOPES, type Decision, type Proposal, type Risk, type Solution, type Task, type TeamStatus, type Workspace } from "@techlead/shared";
 import { useEffect, useState } from "react";
 import { api, configured, supabase } from "../lib/clients";
-import { Integrations } from "./integrations";
+import { DecisionsView } from "./views/decisions";
+import { OverviewView } from "./views/overview";
+import { RisksView } from "./views/risks";
+import { SetupView } from "./views/setup";
+import { TasksView } from "./views/tasks";
+import { TeamView } from "./views/team";
 
-type State =
-  | { kind: "loading" }
-  | { kind: "signed-out" }
-  | { kind: "ready"; me: Me; solutions: Solution[]; proposals: Proposal[] }
-  | { kind: "error"; message: string };
+export type Desk = {
+  me: Me;
+  workspace: Workspace;
+  solutions: Solution[];
+  tasks: Task[];
+  decisions: Decision[];
+  risks: Risk[];
+  team: TeamStatus[];
+  proposals: Proposal[];
+};
+
+type State = { kind: "loading" } | { kind: "signed-out" } | { kind: "ready"; desk: Desk } | { kind: "error"; message: string };
+
+const TABS = [
+  { id: "today", label: "Today" },
+  { id: "tasks", label: "Tasks" },
+  { id: "decisions", label: "Decisions" },
+  { id: "risks", label: "Risks" },
+  { id: "team", label: "Team" },
+  { id: "setup", label: "Setup", ownerOnly: true },
+] as const;
+type Tab = (typeof TABS)[number]["id"];
+
+async function loadDesk(): Promise<Desk> {
+  const me = await api.me();
+  const owner = me.role === "owner";
+  const [workspace, solutions, tasks, decisions, risks, team, proposals] = await Promise.all([
+    api.workspace(),
+    api.solutions(),
+    api.tasks(),
+    api.decisions(),
+    api.risks(),
+    api.teamStatuses(),
+    owner ? api.proposals() : Promise.resolve([]),
+  ]);
+  return { me, workspace, solutions, tasks, decisions, risks, team, proposals };
+}
 
 export function Dashboard() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [tab, setTab] = useState<Tab>("today");
+  const [solutionId, setSolutionId] = useState<string>("");
 
   async function load() {
     const session = (await supabase?.auth.getSession())?.data.session;
     if (!session) return setState({ kind: "signed-out" });
     try {
-      const me = await api.me();
-      const [solutions, proposals] = await Promise.all([api.solutions(), me.role === "owner" ? api.proposals() : Promise.resolve([])]);
-      setState({ kind: "ready", me, solutions, proposals });
+      const desk = await loadDesk();
+      setState({ kind: "ready", desk });
+      // First visit: the owner describes the company before anything else.
+      if (desk.me.role === "owner" && !desk.workspace.profile.trim()) setTab((t) => (t === "today" ? "setup" : t));
     } catch (err) {
       setState({ kind: "error", message: err instanceof Error ? err.message : "Could not load your desk." });
     }
@@ -28,6 +68,7 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!configured) return setState({ kind: "error", message: "Supabase is not configured. Copy .env.example to .env and fill it in." });
+    if (new URLSearchParams(window.location.search).has("jira")) setTab("setup");
     void load();
     const sub = supabase?.auth.onAuthStateChange((event, session) => {
       // Microsoft's token is only on the session right after sign-in. Hand it to the
@@ -41,68 +82,110 @@ export function Dashboard() {
   }, []);
 
   if (state.kind === "loading") return <p className="muted">Opening your desk…</p>;
-  if (state.kind === "error") return <p className="panel">{state.message}</p>;
-  if (state.kind === "signed-out")
+  if (state.kind === "error")
     return (
       <section className="panel">
-        <h2>Sign in</h2>
-        <p className="muted">Use your Microsoft work account.</p>
+        <p>{state.message}</p>
+        {configured && (
+          <div className="row">
+            <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
+          </div>
+        )}
+      </section>
+    );
+  if (state.kind === "signed-out") return <SignIn />;
+
+  const { desk } = state;
+  const owner = desk.me.role === "owner";
+  const inSolution = <T extends { solutionId: string | null }>(items: T[]) => (solutionId ? items.filter((i) => i.solutionId === solutionId) : items);
+  const filtered: Desk = {
+    ...desk,
+    tasks: inSolution(desk.tasks),
+    decisions: inSolution(desk.decisions),
+    risks: inSolution(desk.risks),
+    team: inSolution(desk.team),
+    proposals: inSolution(desk.proposals),
+  };
+  const counts: Partial<Record<Tab, number>> = { today: filtered.proposals.length };
+
+  return (
+    <>
+      <div className="row bar">
+        <span>
+          {desk.workspace.companyName} · <strong>{desk.me.displayName}</strong> <span className="muted">({desk.me.role})</span>
+        </span>
+        <span className="grow" />
+        <label className="row">
+          <span className="muted">Solution</span>
+          <select value={solutionId} onChange={(e) => setSolutionId(e.target.value)}>
+            <option value="">All solutions</option>
+            {desk.solutions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
+      </div>
+
+      <nav className="tabs" aria-label="Sections">
+        {TABS.filter((t) => owner || !("ownerOnly" in t)).map((t) => (
+          <button key={t.id} className={tab === t.id ? "tab on" : "tab"} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}>
+            {t.label}
+            {counts[t.id] ? <span className="count">{counts[t.id]}</span> : null}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "today" && <OverviewView desk={filtered} reload={load} />}
+      {tab === "tasks" && <TasksView desk={filtered} reload={load} defaultSolutionId={solutionId || null} />}
+      {tab === "decisions" && <DecisionsView desk={filtered} />}
+      {tab === "risks" && <RisksView desk={filtered} />}
+      {tab === "team" && <TeamView desk={filtered} />}
+      {tab === "setup" && owner && <SetupView desk={desk} reload={load} />}
+    </>
+  );
+}
+
+const microsoftSignIn = process.env.NEXT_PUBLIC_MICROSOFT_SIGNIN === "true";
+
+/** Email link sign-in always works; Microsoft appears once the Entra ID app is set up. */
+function SignIn() {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function sendLink(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const { error } = (await supabase?.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })) ?? { error: null };
+    if (error) setError(error.message);
+    else setSent(true);
+  }
+
+  return (
+    <section className="panel">
+      <h2>Sign in</h2>
+      {microsoftSignIn && (
         <div className="row">
           <button className="primary" onClick={() => supabase?.auth.signInWithOAuth({ provider: "azure", options: { scopes: MICROSOFT_SCOPES.join(" ") } })}>
             Sign in with Microsoft
           </button>
+          <span className="muted small">Needed for Teams transcripts.</span>
         </div>
-      </section>
-    );
-
-  return (
-    <>
-      <section className="panel">
-        <div className="row">
-          <h2 style={{ margin: 0 }}>Hello, {state.me.displayName}</h2>
-          <span className="muted">({state.me.role})</span>
-          <span style={{ flex: 1 }} />
-          <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
-        </div>
-      </section>
-      {state.me.role === "owner" && (
-        <section className="panel">
-          <h2 style={{ margin: 0 }}>Review inbox</h2>
-          {state.proposals.length === 0 ? (
-            <p className="muted">Nothing to review. New meeting transcripts and Jira changes land here as proposals.</p>
-          ) : (
-            state.proposals.map((p) => (
-              <div key={p.id} className="row">
-                <span>
-                  <strong>{p.draft.kind.replace("_", " ")}</strong>: {"title" in p.draft ? p.draft.title : p.draft.personName}
-                </span>
-                <span className="muted">“{p.evidence}”</span>
-                <span style={{ flex: 1 }} />
-                <button className="primary" onClick={() => api.acceptProposal(p.id, "private").then(load)}>
-                  Accept as private
-                </button>
-                <button onClick={() => api.acceptProposal(p.id, "team").then(load)}>Accept for team</button>
-                <button onClick={() => api.rejectProposal(p.id).then(load)}>Reject</button>
-              </div>
-            ))
-          )}
-        </section>
       )}
-      {state.me.role === "owner" && <Integrations solutions={state.solutions} />}
-      <section className="panel">
-        <h2 style={{ margin: 0 }}>Solutions</h2>
-        {state.solutions.length === 0 ? (
-          <p className="muted">No solutions yet.</p>
-        ) : (
-          <ul>
-            {state.solutions.map((s) => (
-              <li key={s.id}>
-                {s.name} <span className="muted">· {s.phase} · {s.health}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </>
+      {sent ? (
+        <p className="notice">Check {email} for a sign-in link.</p>
+      ) : (
+        <form className="row" onSubmit={sendLink}>
+          <input type="email" required aria-label="Email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="grow" />
+          <button type="submit" className={microsoftSignIn ? "" : "primary"}>
+            Email me a sign-in link
+          </button>
+        </form>
+      )}
+      {error && <p className="notice">{error}</p>}
+    </section>
   );
 }

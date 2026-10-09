@@ -58,3 +58,32 @@ set role authenticated;
 set request.jwt.claim.sub = '00000000-0000-4000-8000-00000000000d';
 select pg_temp.check('stranger sees nothing', (select count(*) from tasks) = 0 and (select count(*) from workspaces) = 0);
 select pg_temp.check('nobody but the service role reads tokens', (select count(*) from integration_tokens) = 0);
+
+-- First sign-in: only the configured owner email can claim a workspace, and only one without an owner.
+reset role;
+insert into settings values ('owner_email', 'Boss@Infor.com');
+insert into auth.users values ('00000000-0000-4000-8000-00000000000e');
+set role authenticated;
+select pg_temp.check('nobody reads settings', (select count(*) from settings) = 0);
+
+set request.jwt.claim.sub = '00000000-0000-4000-8000-00000000000d';
+set request.jwt.claims = '{"email": "someone@else.com"}';
+select pg_temp.check('a stranger cannot claim the workspace', (select (claim_workspace('X')).id) is null);
+
+set request.jwt.claim.sub = '00000000-0000-4000-8000-00000000000e';
+set request.jwt.claims = '{"email": "boss@infor.com"}';
+select pg_temp.check('the owner email cannot take a workspace that has an owner', (select (claim_workspace('Boss')).id) is null);
+
+set request.jwt.claim.sub = '00000000-0000-4000-8000-00000000000a';
+set request.jwt.claims = '{"email": "owner@infor.com"}';
+select pg_temp.check('an existing member gets their own membership back', (select (claim_workspace('')).role) = 'owner');
+
+reset role;
+begin;
+delete from members;
+set local role authenticated;
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-00000000000e';
+set local request.jwt.claims = '{"email": "boss@infor.com"}';
+select pg_temp.check('the owner email claims the ownerless workspace on first sign-in', (select (claim_workspace('Boss')).role) = 'owner');
+select pg_temp.check('and then sees everything in it', (select count(*) from tasks) = 3);
+rollback;
