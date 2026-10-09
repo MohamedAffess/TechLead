@@ -1,15 +1,46 @@
 # Deploying TechLead on free plans
 
-This guide takes you from a fresh clone to a live web app, API, database and
-background worker, using free plans only. Each step says where to click and
-what to copy. Plan on doing it once, in order.
+There are two ways to go live. The **fast path** takes about 15 minutes: you
+create three free accounts, paste three keys into GitHub, and press one
+button. A workflow then sets up the database, the web app and the API for you.
+The **manual path** below it explains every setting, if you'd rather click
+through the dashboards yourself or need to fix something.
+
+## Fast path
+
+1. **Supabase** (database and sign-in): sign up at [supabase.com](https://supabase.com) with GitHub. Then open [Account > Access tokens](https://supabase.com/dashboard/account/tokens), choose **Generate new token**, and copy it.
+2. **Vercel** (web app and API hosting): sign up at [vercel.com](https://vercel.com) with GitHub on the free Hobby plan. Then open [Account settings > Tokens](https://vercel.com/account/tokens), create a token with no expiry, and copy it.
+3. **Claude API**: at [console.anthropic.com](https://console.anthropic.com), add a payment method and create an API key. This is the only part that costs money: you pay per use.
+4. In this repository on GitHub, open **Settings > Secrets and variables > Actions > New repository secret** and add:
+
+   | Name | Value |
+   | --- | --- |
+   | `SUPABASE_ACCESS_TOKEN` | From step 1 |
+   | `VERCEL_TOKEN` | From step 2 |
+   | `ANTHROPIC_API_KEY` | From step 3 |
+   | `OWNER_EMAIL` (optional) | The email you'll sign in with. If you leave it out, your Vercel account's email is used. |
+
+5. Open **Actions > Go live > Run workflow**. When it finishes, its summary shows the link to your app.
+6. Open the link and sign in with your email (you get a sign-in link by email). The first sign-in with the owner email sets up your workspace and makes you its owner. The app then opens on **Setup**, where you describe your work and the AI drafts the rest.
+
+That's it: the worker starts reading your notes every 30 minutes on its own.
+Run **Go live** again whenever you want the latest code online; it only changes
+what is new.
+
+Later, when you want them:
+
+- **Teams transcripts and Microsoft sign-in:** create the Entra ID app (manual step 4), add `MS_TENANT_ID`, `MS_CLIENT_ID` and `MS_CLIENT_SECRET` as secrets, and run **Go live** again.
+- **Jira:** create the Atlassian app (manual step 5), add `JIRA_CLIENT_ID` and `JIRA_CLIENT_SECRET`, run **Go live** again, then use **Connect Jira** in Setup. The callback URL is your API address (shown in the Go live summary) followed by `/integrations/jira/callback`.
+- **Region:** the database is created in Frankfurt (`eu-central-1`). To choose another region, set the repository variable `SUPABASE_REGION` before the first run.
+
+# Manual path
 
 ## What runs where
 
 | Part | Service | Plan | Notes |
 | --- | --- | --- | --- |
 | Database, sign-in, file storage | [Supabase](https://supabase.com) | Free | 500 MB database, 1 GB files. Free projects pause after a week with no activity; one click resumes them. |
-| Web app (`apps/web`) | [Vercel](https://vercel.com) | Hobby (free) | Deploys every push to `main`, and a preview for every pull request. |
+| Web app (`apps/web`) | [Vercel](https://vercel.com) | Hobby (free) | Deployed by the **Go live** workflow, or by Vercel's Git integration on the manual path. |
 | API (`apps/api`) | Vercel | Hobby (free) | A second Vercel project from the same repo. |
 | Background jobs (`apps/worker`) | GitHub Actions | Free for public repos | Runs every 30 minutes. |
 | iOS app (`apps/mobile`) | Expo Go | Free | Run it on your iPhone during development. |
@@ -22,6 +53,7 @@ else stays free while usage is small.
 
 > Keep the GitHub repository public to get unlimited free Actions minutes.
 > A private repository gets 2,000 minutes a month, which the worker alone can use up.
+> GitHub pauses scheduled workflows after 60 days with no commits; re-enable the Worker under Actions if that happens.
 
 ## 1. Supabase: database and sign-in
 
@@ -29,7 +61,7 @@ else stays free while usage is small.
 2. Open **Project Settings > API** and copy the **Project URL**, the **anon** key and the **service_role** key.
 3. Apply the schema. Either:
    - open **SQL Editor**, paste each file from `packages/db/supabase/migrations/` in name order, and run it; or
-   - turn on the automatic deploy (step 6), which does it for you on every merge.
+   - use the fast path's **Go live** workflow, which applies them for you.
 4. Sign-in with Microsoft: in **Authentication > Providers > Azure**, paste the client ID and secret of the Entra ID app from step 4, and set the URL to `https://login.microsoftonline.com/<tenant-id>/v2.0`.
 5. In **Authentication > URL Configuration**, set **Site URL** to your Vercel web URL (step 2) and add these redirect URLs:
    - `techlead://auth-callback` (the installed iPhone app)
@@ -38,7 +70,7 @@ else stays free while usage is small.
 ## 2. Vercel: web app and API
 
 1. Sign in at [vercel.com](https://vercel.com) with GitHub and choose **Add New > Project** for `MohamedAffess/TechLead`.
-2. Web project: set **Root Directory** to `apps/web`. Add the environment variables `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_API_URL` (the API URL from the next step). Deploy.
+2. Web project: set **Root Directory** to `apps/web`. Add the environment variables `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` (the API URL from the next step) and, once step 4 is done, `NEXT_PUBLIC_MICROSOFT_SIGNIN=true`. Deploy.
 3. API project: add the repository again, set **Root Directory** to `apps/api`. Add these environment variables, then deploy:
 
    | Name | Value |
@@ -52,10 +84,15 @@ else stays free while usage is small.
 
 ## 3. Make yourself the owner
 
-Sign in once on the web app, then run [`scripts/bootstrap-owner.sql`](../scripts/bootstrap-owner.sql)
-in the Supabase SQL Editor after putting your email in it. It creates the
-Infor workspace and makes you its owner. Team members and guests are added
-the same way later, with the role `team` or `guest`.
+In the Supabase SQL Editor, store the email you'll sign in with:
+
+```sql
+insert into settings (key, value) values ('owner_email', 'you@example.com');
+```
+
+The first time that email signs in, the workspace is created and you become its owner.
+Team members and guests are added later with [`scripts/bootstrap-owner.sql`](../scripts/bootstrap-owner.sql)'s
+second statement, using the role `team` or `guest`.
 
 ## 4. Microsoft Entra ID app (sign-in and Teams transcripts)
 
@@ -75,7 +112,7 @@ Teams only lets you read transcripts of meetings **you organized**, and only whe
 4. Copy the client ID and secret into the Vercel API project (step 2) and GitHub (step 6), then redeploy the API.
 5. In the web app, open **Integrations**, choose **Connect Jira**, and approve. Back in the app, tick the projects to follow and, if you like, the solution each one feeds. Save.
 
-## 6. GitHub: worker and automatic database deploys
+## 6. GitHub: background worker
 
 In the repository, open **Settings > Secrets and variables > Actions**.
 
@@ -87,18 +124,7 @@ Secrets:
 | `ANTHROPIC_API_KEY` | From [console.anthropic.com](https://console.anthropic.com) |
 | `JIRA_CLIENT_ID`, `JIRA_CLIENT_SECRET` | From step 5 |
 | `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET` | From step 4 (the tenant ID is on the app's Overview page) |
-| `SUPABASE_ACCESS_TOKEN` | [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) |
-| `SUPABASE_DB_PASSWORD` | The database password from step 1 |
-| `SUPABASE_PROJECT_REF` | The id in your Supabase project URL |
-
-Variables (these switch the workflows on):
-
-| Name | Value |
-| --- | --- |
-| `WORKER_ENABLED` | `true` |
-| `DB_DEPLOY_ENABLED` | `true` |
-
-Then open **Actions > Worker > Run workflow** once to check it runs.
+The worker skips itself until these are set. Open **Actions > Worker > Run workflow** once to check it runs.
 
 ## 7. iOS app on your iPhone
 
@@ -112,7 +138,8 @@ Then open **Actions > Worker > Run workflow** once to check it runs.
 | Symptom | Likely cause |
 | --- | --- |
 | Web app says Supabase is not configured | The `NEXT_PUBLIC_` variables are missing in the Vercel web project. Redeploy after adding them. |
-| API answers 403 "not a member" | Step 3 was skipped, or the email in the script does not match your Microsoft account. |
+| API answers 403 "not a member" | You signed in with a different email than the owner email (the `OWNER_EMAIL` secret, your Vercel email, or manual step 3). Sign out and use that email. |
+| Go live fails at "Set up Supabase and Vercel projects" | The error line names the problem; most often a token was copied incompletely. Fix the secret and run it again. |
 | Everything times out after a quiet week | The free Supabase project paused. Resume it from the dashboard. |
 | Worker run fails at "once" | A secret from step 6 is missing; the log names it. |
 | Integrations panel says the server is not set up | `SUPABASE_SERVICE_ROLE_KEY`, `OAUTH_STATE_SECRET`, `WEB_URL` or `API_URL` is missing in the Vercel API project. |

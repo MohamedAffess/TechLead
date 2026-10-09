@@ -82,19 +82,18 @@ export function Dashboard() {
   }, []);
 
   if (state.kind === "loading") return <p className="muted">Opening your desk…</p>;
-  if (state.kind === "error") return <p className="panel">{state.message}</p>;
-  if (state.kind === "signed-out")
+  if (state.kind === "error")
     return (
       <section className="panel">
-        <h2>Sign in</h2>
-        <p className="muted">Use your Microsoft work account.</p>
-        <div className="row">
-          <button className="primary" onClick={() => supabase?.auth.signInWithOAuth({ provider: "azure", options: { scopes: MICROSOFT_SCOPES.join(" ") } })}>
-            Sign in with Microsoft
-          </button>
-        </div>
+        <p>{state.message}</p>
+        {configured && (
+          <div className="row">
+            <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
+          </div>
+        )}
       </section>
     );
+  if (state.kind === "signed-out") return <SignIn />;
 
   const { desk } = state;
   const owner = desk.me.role === "owner";
@@ -146,5 +145,47 @@ export function Dashboard() {
       {tab === "team" && <TeamView desk={filtered} />}
       {tab === "setup" && owner && <SetupView desk={desk} reload={load} />}
     </>
+  );
+}
+
+const microsoftSignIn = process.env.NEXT_PUBLIC_MICROSOFT_SIGNIN === "true";
+
+/** Email link sign-in always works; Microsoft appears once the Entra ID app is set up. */
+function SignIn() {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function sendLink(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const { error } = (await supabase?.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })) ?? { error: null };
+    if (error) setError(error.message);
+    else setSent(true);
+  }
+
+  return (
+    <section className="panel">
+      <h2>Sign in</h2>
+      {microsoftSignIn && (
+        <div className="row">
+          <button className="primary" onClick={() => supabase?.auth.signInWithOAuth({ provider: "azure", options: { scopes: MICROSOFT_SCOPES.join(" ") } })}>
+            Sign in with Microsoft
+          </button>
+          <span className="muted small">Needed for Teams transcripts.</span>
+        </div>
+      )}
+      {sent ? (
+        <p className="notice">Check {email} for a sign-in link.</p>
+      ) : (
+        <form className="row" onSubmit={sendLink}>
+          <input type="email" required aria-label="Email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="grow" />
+          <button type="submit" className={microsoftSignIn ? "" : "primary"}>
+            Email me a sign-in link
+          </button>
+        </form>
+      )}
+      {error && <p className="notice">{error}</p>}
+    </section>
   );
 }

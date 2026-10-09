@@ -49,8 +49,10 @@ pnpm db:test   # migrations and row-level security against a throwaway Postgres
 
 ## Deploy
 
-Follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). It walks through every
-account and setting, in order, on free plans.
+The [fast path](docs/DEPLOYMENT.md#fast-path) takes about 15 minutes: create
+free Supabase and Vercel accounts, add three keys as GitHub secrets, and run the
+**Go live** workflow. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) also covers every
+setting by hand.
 
 ## License
 
