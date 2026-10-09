@@ -2,7 +2,7 @@
 import type { IntegrationStatus, JiraProjectChoice } from "@techlead/api-client";
 import type { Solution } from "@techlead/shared";
 import { useEffect, useState } from "react";
-import { api } from "../lib/clients";
+import { api } from "../../lib/clients";
 
 const JIRA_RESULT: Record<string, string> = {
   connected: "Jira is connected. Pick the projects to follow below.",

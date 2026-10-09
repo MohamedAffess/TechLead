@@ -23,6 +23,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.19.5
         version: 1.19.17(hono@4.13.13)
+      '@techlead/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@techlead/db':
         specifier: workspace:*
         version: link:../../packages/db

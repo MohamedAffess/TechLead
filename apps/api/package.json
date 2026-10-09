@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.5",
+    "@techlead/ai": "workspace:*",
     "@techlead/db": "workspace:*",
     "@techlead/shared": "workspace:*",
     "@techlead/sync": "workspace:*",
