@@ -1,0 +1,26 @@
+# Supabase CLI config for local development (`supabase start` from packages/db).
+project_id = "techlead"
+
+[api]
+port = 54321
+
+[db]
+port = 54322
+major_version = 16
+
+[studio]
+port = 54323
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["techlead://auth-callback"]
+
+[auth.external.azure]
+# Microsoft Entra ID sign-in. Fill these in Supabase Dashboard > Authentication > Providers for production.
+enabled = false
+client_id = "env(MS_CLIENT_ID)"
+secret = "env(MS_CLIENT_SECRET)"
+url = "env(MS_AZURE_URL)" # https://login.microsoftonline.com/<tenant-id>/v2.0
+
+[storage]
+file_size_limit = "20MiB"
