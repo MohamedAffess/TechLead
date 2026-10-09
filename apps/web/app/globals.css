@@ -16,3 +16,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; display: flex;
 button { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 ul { margin: 0; padding-left: 18px; }
+.notice { margin: 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--bg); }
+.projects { display: flex; flex-direction: column; gap: 6px; padding-left: 12px; border-left: 1px solid var(--line); }
+select { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+button:disabled, select:disabled { opacity: 0.55; cursor: default; }

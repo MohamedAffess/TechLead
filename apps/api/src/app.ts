@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import { integrationRoutes, type IntegrationsConfig } from "./integrations.js";
 import { recordFromProposal, type ProposalRow } from "./records.js";
 
 export type Member = { id: string; workspaceId: string; role: Role; displayName: string };
@@ -15,9 +16,11 @@ export type Deps = {
    */
   resolveMember(accessToken: string): Promise<{ member: Member; db: SupabaseClient } | null>;
   allowedOrigins?: string[];
+  /** Jira and Microsoft connections. Left out, those routes answer 503. */
+  integrations?: IntegrationsConfig;
 };
 
-type Env = { Variables: { member: Member; db: SupabaseClient } };
+export type Env = { Variables: { member: Member; db: SupabaseClient } };
 
 export function createApp(deps: Deps) {
   const app = new Hono<Env>();
@@ -117,6 +120,8 @@ export function createApp(deps: Deps) {
     if (error) throw new HTTPException(400, { message: error.message });
     return c.body(null, 204);
   });
+
+  integrationRoutes(app, deps.integrations);
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);

@@ -13,6 +13,7 @@
     "@hono/node-server": "^1.19.5",
     "@techlead/db": "workspace:*",
     "@techlead/shared": "workspace:*",
+    "@techlead/sync": "workspace:*",
     "hono": "^4.13.13",
     "zod": "^4.1.12"
   },

@@ -103,11 +103,70 @@ export function issueToSourceText(issue: JiraIssue): string {
     .join("\n");
 }
 
+export const JIRA_SCOPES = ["read:jira-work", "read:jira-user", "offline_access"];
+
+/** Where the owner is sent to approve read-only access to Jira. */
+export function jiraAuthorizeUrl(input: { clientId: string; redirectUri: string; state: string }): string {
+  const params = new URLSearchParams({
+    audience: "api.atlassian.com",
+    client_id: input.clientId,
+    scope: JIRA_SCOPES.join(" "),
+    redirect_uri: input.redirectUri,
+    state: input.state,
+    response_type: "code",
+    prompt: "consent",
+  });
+  return `https://auth.atlassian.com/authorize?${params}`;
+}
+
+export type JiraTokens = { accessToken: string; refreshToken: string | null; expiresAt: string };
+
+function toTokens(body: { access_token: string; refresh_token?: string; expires_in: number }): JiraTokens {
+  return {
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token ?? null,
+    expiresAt: new Date(Date.now() + body.expires_in * 1000).toISOString(),
+  };
+}
+
+/** Swaps the code from the consent screen for tokens. */
+export async function exchangeJiraCode(
+  input: { clientId: string; clientSecret: string; code: string; redirectUri: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<JiraTokens> {
+  const res = await fetchImpl("https://auth.atlassian.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "authorization_code",
+      client_id: input.clientId,
+      client_secret: input.clientSecret,
+      code: input.code,
+      redirect_uri: input.redirectUri,
+    }),
+  });
+  if (!res.ok) throw new Error(`Jira sign-in failed: ${res.status}`);
+  return toTokens((await res.json()) as { access_token: string; refresh_token?: string; expires_in: number });
+}
+
+export type JiraSite = { cloudId: string; url: string; name: string };
+
+/** The Jira Cloud sites this token can read. */
+export async function accessibleSites(accessToken: string, fetchImpl: typeof fetch = fetch): Promise<JiraSite[]> {
+  const res = await fetchImpl("https://api.atlassian.com/oauth/token/accessible-resources", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Could not list Jira sites: ${res.status}`);
+  const body = (await res.json()) as { id: string; url: string; name: string }[];
+  return body.map((r) => ({ cloudId: r.id, url: r.url, name: r.name }));
+}
+
 /** Exchanges a refresh token for a new access token (Atlassian rotates refresh tokens). */
 export async function refreshJiraToken(
   input: { clientId: string; clientSecret: string; refreshToken: string },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ accessToken: string; refreshToken: string; expiresAt: string }> {
+): Promise<JiraTokens> {
   const res = await fetchImpl("https://auth.atlassian.com/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -119,10 +178,6 @@ export async function refreshJiraToken(
     }),
   });
   if (!res.ok) throw new Error(`Jira token refresh failed: ${res.status}`);
-  const body = (await res.json()) as { access_token: string; refresh_token: string; expires_in: number };
-  return {
-    accessToken: body.access_token,
-    refreshToken: body.refresh_token,
-    expiresAt: new Date(Date.now() + body.expires_in * 1000).toISOString(),
-  };
+  const fresh = toTokens((await res.json()) as { access_token: string; refresh_token?: string; expires_in: number });
+  return { ...fresh, refreshToken: fresh.refreshToken ?? input.refreshToken };
 }

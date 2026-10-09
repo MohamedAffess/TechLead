@@ -16,5 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@techlead/shared": "workspace:*"
+  }
 }

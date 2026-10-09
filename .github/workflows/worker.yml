@@ -1,6 +1,6 @@
 name: Worker
 
-# Runs the background jobs (Jira sync, AI extraction) on a schedule.
+# Runs the background jobs (Jira and Teams sync, AI extraction) on a schedule.
 # Free for public repositories. Turn it on by setting the repository
 # variable WORKER_ENABLED to "true" once the secrets below are added.
 on:
@@ -34,3 +34,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           JIRA_CLIENT_ID: ${{ secrets.JIRA_CLIENT_ID }}
           JIRA_CLIENT_SECRET: ${{ secrets.JIRA_CLIENT_SECRET }}
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}

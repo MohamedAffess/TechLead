@@ -1,8 +1,9 @@
 "use client";
 import type { Me } from "@techlead/api-client";
-import type { Proposal, Solution } from "@techlead/shared";
+import { MICROSOFT_SCOPES, type Proposal, type Solution } from "@techlead/shared";
 import { useEffect, useState } from "react";
 import { api, configured, supabase } from "../lib/clients";
+import { Integrations } from "./integrations";
 
 type State =
   | { kind: "loading" }
@@ -28,7 +29,14 @@ export function Dashboard() {
   useEffect(() => {
     if (!configured) return setState({ kind: "error", message: "Supabase is not configured. Copy .env.example to .env and fill it in." });
     void load();
-    const sub = supabase?.auth.onAuthStateChange(() => void load());
+    const sub = supabase?.auth.onAuthStateChange((event, session) => {
+      // Microsoft's token is only on the session right after sign-in. Hand it to the
+      // server so the worker can read Teams transcripts; non-owners are refused, which is fine.
+      if (event === "SIGNED_IN" && session?.provider_token) {
+        void api.saveMicrosoftToken({ accessToken: session.provider_token, refreshToken: session.provider_refresh_token ?? null }).catch(() => {});
+      }
+      void load();
+    });
     return () => sub?.data.subscription.unsubscribe();
   }, []);
 
@@ -40,7 +48,7 @@ export function Dashboard() {
         <h2>Sign in</h2>
         <p className="muted">Use your Microsoft work account.</p>
         <div className="row">
-          <button className="primary" onClick={() => supabase?.auth.signInWithOAuth({ provider: "azure", options: { scopes: "email" } })}>
+          <button className="primary" onClick={() => supabase?.auth.signInWithOAuth({ provider: "azure", options: { scopes: MICROSOFT_SCOPES.join(" ") } })}>
             Sign in with Microsoft
           </button>
         </div>
@@ -80,6 +88,7 @@ export function Dashboard() {
           )}
         </section>
       )}
+      {state.me.role === "owner" && <Integrations solutions={state.solutions} />}
       <section className="panel">
         <h2 style={{ margin: 0 }}>Solutions</h2>
         {state.solutions.length === 0 ? (
